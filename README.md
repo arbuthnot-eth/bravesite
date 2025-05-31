@@ -4,7 +4,7 @@
 
 ## Overview
 
-**Bravesite** is an open-source Cloudflare Worker that acts as a seamless bridge between Web2 and Web3, enabling any browser to access decentralized IPFS content associated with Unstoppable Domains `.brave` addresses—simply by appending `.site` to the `.brave` domain.
+**Bravesite** is an open-source Cloudflare Worker that acts as a seamless bridge between Web2 and Web3, enabling any browser to access content associated with Unstoppable Domains `.brave` addresses—simply by appending `.site` to the `.brave` domain.
 
 **Example:**  
 If you own `sunspot.brave`, you can serve your IPFS-hosted site at `https://sunspot.brave.site`—no browser plugins, no special gateways, no extra setup.
@@ -14,23 +14,37 @@ If you own `sunspot.brave`, you can serve your IPFS-hosted site at `https://suns
 ## How It Works
 
 1. **DNS Mapping:**  
-   When a user visits `https://<subdomain>.brave.site`, the Worker extracts `<subdomain>` and constructs the corresponding Unstoppable Domain: `<subdomain>.brave`.
+   When a user visits `https://<domain-or-subdomain>.brave.site`, the Worker extracts `<domain-or-subdomain>` and constructs the corresponding Unstoppable Domain: `<domain-or-subdomain>.brave`.
 
 2. **Unstoppable Domains API:**  
-   The Worker queries the Unstoppable Domains API to resolve the domain and fetches the associated IPFS content hash (from records like `dweb.ipfs.hash`, `ipfs.html.value`, or `crypto.IPFS.value`).
+   The Worker queries the Unstoppable Domains API to resolve the domain. It first checks for a `browser.redirect_url` record.
 
-3. **IPFS Content Fetching:**  
-   The Worker attempts to fetch the content from multiple public IPFS gateways (Cloudflare, ipfs.io, dweb.link) with retry logic for resilience.
+3. **Redirect Handling (New):**
+   If a `browser.redirect_url` is found in the domain's records, the Worker immediately issues an HTTP 302 redirect to that URL. This takes precedence over IPFS content.
 
-4. **Content Delivery:**  
-   The fetched content is served directly to the browser with appropriate content-type headers, CORS, and caching.
+4. **IPFS Content Fetching:**  
+   If no redirect URL is found, the Worker fetches the associated IPFS content hash (from records like `dweb.ipfs.hash`, `ipfs.html.value`, or `crypto.IPFS.value`).
+
+5. **IPFS Content Delivery:**  
+   The Worker attempts to fetch the content from multiple public IPFS gateways (Cloudflare, ipfs.io, dweb.link) concurrently, using the first successful response. A fallback to sequential retries is in place for resilience.
+
+6. **Content Serving:**  
+   The fetched IPFS content is served directly to the browser with appropriate content-type headers, CORS, and caching.
 
 ---
 
 ## Features
 
 - **Web2/Web3 Bridge:**  
-  Access decentralized IPFS content from any browser using familiar URLs.
+  Access decentralized IPFS content or Web2 redirect URLs from any browser using familiar URLs.
+- **Redirect URL Support:**
+  If a `.brave` domain has a `browser.redirect_url` record, users will be seamlessly redirected, allowing for easy pointing to existing Web2 sites.
+- **Subdomain and Base Domain Support:**
+  Resolves both `yourdomain.brave.site` (to `yourdomain.brave`) and `sub.yourdomain.brave.site` (to `sub.yourdomain.brave`).
+- **Optimized IPFS Fetching:**  
+  Uses `Promise.race` for faster IPFS gateway responses, with fallback to sequential retries.
+- **API Response Caching:**
+  Caches responses from the Unstoppable Domains API to improve performance for repeated requests.
 - **Multi-Gateway Resilience:**  
   Tries several IPFS gateways and retries on failure for robust content delivery.
 - **No Plugins Required:**  
@@ -129,13 +143,18 @@ npm run deploy
 ## Usage
 
 - Register a `.brave` domain via [Unstoppable Domains](https://unstoppabledomains.com/).
-- Set your IPFS hash in the domain records (e.g., `dweb.ipfs.hash`).
-- Access your decentralized site at:  
-  `https://<yourdomain>.brave.site`
+- Set your IPFS hash in the domain records (e.g., `dweb.ipfs.hash`) OR set a redirect URL in the `browser.redirect_url` record.
+- Access your decentralized site or redirect at:  
+  `https://<yourdomain>.brave.site`  
+  or for subdomains:  
+  `https://<subdomain>.<yourdomain>.brave.site`
 
-**Example:**  
+**Example (IPFS):**  
 If you own `sunspot.brave` and set its IPFS hash, visit:  
 `https://sunspot.brave.site`
+
+**Example (Redirect):**
+If you own `mysite.brave` and set `browser.redirect_url` to `https://myothersite.com`, visiting `https://mysite.brave.site` will redirect to `https://myothersite.com`.
 
 ---
 
